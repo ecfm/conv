@@ -65,21 +65,24 @@ class PoolLayer(BaseConvLayer):
         # cache for backward pass
         self.h_in, self.w_in, self.c = h_in, w_in, c
         self.data = data
-        self.argmax = np.zeros((batch_size, h_out * w_out))
+        self.argmax = np.zeros((batch_size, h_out * w_out * c), dtype=int)
 
         outputs = OrderedDict()
         outputs["height"] = h_out
         outputs["width"] = w_out
         outputs["channels"] = c
+        outputs["data"] = np.zeros((batch_size, h_out * w_out * c), dtype=dtype)
         for ix in range(batch_size):
             # [k * k * c, h_out * w_out]
             col = self.im2col_conv(data[ix], h_in, w_in, c, h_out, w_out)
             # [h_out * w_out, c]
             max_result = np.zeros((h_out * w_out, c), dtype=dtype)
-            argmax_result = np.zeros((h_out * w_out, c), dtype=dtype)
+            argmax_result = np.zeros((h_out * w_out, c), dtype=int)
             for ic in range(c):
-                max_result[:, ic] = col[ic * k * k: (ic + 1) * k * k, :].max(0)
-                argmax_result[:, ic] = col[ic * k * k: (ic + 1) * k * k, :].argmax(0)
+                # [k * k, h_out * w_out]
+                conv_mat = col[ic * k * k: (ic + 1) * k * k, :]
+                max_result[:, ic] = conv_mat.max(0)
+                argmax_result[:, ic] = conv_mat.argmax(0)
             outputs["data"][ix] = max_result.flatten()
             self.argmax[ix] = argmax_result.flatten()
         return outputs
@@ -120,16 +123,18 @@ class PoolLayer(BaseConvLayer):
         input_grads["grad"] = np.zeros_like(input_data, dtype=dtype)
 
         for ix in range(batch_size):
-            # [h_out * w_out]
-            output_diff_col = output_diff[ix]
             # [k * k * c, h_out * w_out]
             input_grad_col = np.zeros((k * k * c, h_out * w_out), dtype=dtype)
-            # [h_out * w_out]
-            argmax_col = self.argmax[ix]
+            # [h_out * w_out, c]
+            output_diff_col = output_diff[ix].reshape(h_out * w_out, c)
+            # [h_out * w_out, c]
+            argmax_col = self.argmax[ix].reshape(h_out * w_out, c).reshape(h_out * w_out, c)
             # compute gradients
-            # [k * k * c, h_out * w_out] x [h_out * w_out, num] = [k * k * c, num]
-            for i in range(h_out * w_out):
-                input_grad_col[argmax_col[i], i] = output_diff_col[i]
+            for ic in range(c):
+                input_grad_conv = input_grad_col[ic * k * k: (ic + 1) * k * k, :]
+                for i in range(h_out * w_out):
+                    input_grad_conv[argmax_col[i], i] = output_diff_col[i, ic]
             im = self.col2im_conv(input_grad_col.flatten(), h_in, w_in, c, h_out, w_out)
             input_grads["grad"][ix] = im.flatten()
+        assert input_grads["grad"].shape == self.data.shape
         return input_grads

@@ -15,7 +15,7 @@ class SGDMomentum(object):
             if hasattr(layer, "params"):
                 for p_key in layer.params:
                     self.param += [layer.params[p_key]]
-                    self.theta += [None]
+                    self.theta += [0]
         self.alpha = None
 
     def zero_grad(self):
@@ -23,11 +23,14 @@ class SGDMomentum(object):
             p.grad = None
 
     def update_lr(self, itr):
-        pass
+        self.alpha = self.epsilon / ((1 + self.gamma * itr) ** self.power)
         return self.alpha
 
     def step(self):
-        pass
+        for i, param in enumerate(self.param):
+            reg_grad = param.grad + self.weight_decay * param.value
+            theta = self.mu * self.theta[i] + self.alpha * reg_grad
+            param.value -= theta
 
 
 class SGD(object):

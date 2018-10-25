@@ -7,7 +7,6 @@ from tqdm import tqdm
 from le_net import LeNet, get_lenet_layers
 from optimizer import SGD, SGDMomentum
 
-
 if __name__ == "__main__":
 
     layers = get_lenet_layers()

@@ -70,11 +70,11 @@ class DenseLayer(object):
         outputs = OrderedDict()
         # cache for backward pass
         self.data = data
-        outputs = OrderedDict()
         outputs["height"] = 1
         outputs["width"] = 1
         outputs["channels"] = self.n_out
-        outputs["data"] = np.dot(self.params["w"].value, data) + self.params["b"].value
+        # [batch_size, n_in] * [n_in, n_out] + [n_out] = [batch_size, n_out]
+        outputs["data"] = np.dot(data, self.params["w"].value) + self.params["b"].value
         return outputs
 
     def backward(self, output_grads):
@@ -95,8 +95,23 @@ class DenseLayer(object):
         (i.e divide by batch_size) when you computing the gradient
         of parameters.
         """
+        # [batch_size, n_out]
         grad = output_grads["grad"]
-        raise NotImplementedError("Implement This")
+        batch_size = grad.shape[0]
+        self.params["w"].grad = np.zeros_like(self.params["w"].value, dtype=dtype)
+        for i in range(batch_size):
+            # [n_in, n_out] = outer([n_in], [n_out])
+            self.params["w"].grad += np.outer(self.data[i], grad[i])
+        self.params["w"].grad = self.params["w"].grad / dtype(batch_size)
+
+        self.params["b"].grad = np.zeros_like(self.params["b"].value, dtype=dtype)
+        for i in range(batch_size):
+            self.params["b"].grad += grad[i]
+        self.params["b"].grad = self.params["b"].grad / dtype(batch_size)
+        input_grads = OrderedDict()
+        # [batch_size, n_in] = [batch_size, n_out] * [n_out, n_in]
+        input_grads["grad"] = np.dot(grad, self.params["w"].value.transpose())
+        assert input_grads["grad"].shape == self.data.shape
         return input_grads
 
 
@@ -154,6 +169,9 @@ class ReLULayer(object):
 
         Note that you just compute the gradient wrt the ReLU layer
         """
-        inputs_grad = OrderedDict()
-        raise NotImplementedError("Implement This")
-        return inputs_grad
+        input_grads = OrderedDict()
+        grad = outputs_grad["grad"]
+        grad[self.data < 0] = 0
+        input_grads["grad"] = grad
+        assert input_grads["grad"].shape == self.data.shape
+        return input_grads
